@@ -1,47 +1,46 @@
-package searchTests;
+package search;
 
 import io.qameta.allure.Feature;
-import io.qameta.allure.Step;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.params.provider.MethodSource;
 import pages.BasePage;
-import pages.ConfigReader;
+import config.ConfigReader;
 import pages.KatalogPage;
 import pages.SubCathegoryPage;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
+
+import java.util.List;
 
 public class NoteBookSearchTest extends SetUp {
 
 
     @ParameterizedTest
-    @CsvSource({"Lenovo, HP"})
+    @MethodSource("search.tests.data.provider.DataProvider#provideTestData")
     @Feature("Выбор товаров Yandex market")
     @DisplayName("Проверка выбора товаров")
     /**
      * Метод Запускает тестовые шаги
      * Автор: [Юлия Константинова]
      */
-    public void runTest(String manufacturer1, String manufacturer2) {
+    public void runTest(int minPrice, int maxPrice, List<String> manufacturers, int expectedItemCount) {
 
         BasePage basePage = new BasePage(driver);
         KatalogPage katalogPage = new KatalogPage(driver);
-        SubCathegoryPage subCathegoryPage = new SubCathegoryPage(driver, 10000, 90000);
+        SubCathegoryPage subCathegoryPage = new SubCathegoryPage(driver);
         String baseUrl = ConfigReader.getProperty("baseUrl");
 
         driver.get(baseUrl);
         basePage.clickCatalogLink();
         katalogPage.chooseCategory();
         katalogPage.moveToCathegory();
-        subCathegoryPage.setPriceFilter();
-        subCathegoryPage.selectManufacturer1(manufacturer1);
-        subCathegoryPage.selectManufacturer2(manufacturer2);
-        subCathegoryPage.assertMoreThan12ItemsDisplayed();
-        subCathegoryPage.testFilterOnAllPages();
-        subCathegoryPage.goToNextPage();
+        subCathegoryPage.setPriceFilter(minPrice, maxPrice);
+        subCathegoryPage.selectManufacturers(manufacturers);
+        subCathegoryPage.assertNumberOfItemsDisplayed(expectedItemCount);
+        subCathegoryPage.verifyProductsMatchingFiltersOnAllPages(minPrice, maxPrice, manufacturers);
         subCathegoryPage.goToFirstPage();
-        String notebookName = subCathegoryPage.getFirstname(driver);
+        String itemName = subCathegoryPage.getFirstname(driver);
         subCathegoryPage.findButtonClick();
-        subCathegoryPage.verifySearch(driver, notebookName);
+        subCathegoryPage.verifySearch(driver, itemName);
     }
 
 }

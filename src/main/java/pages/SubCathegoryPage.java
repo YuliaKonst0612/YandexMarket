@@ -2,40 +2,29 @@ package pages;
 
 import io.qameta.allure.Step;
 import org.junit.jupiter.api.Assertions;
-
 import org.openqa.selenium.By;
-import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
-import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
+import parameters.TestParameters;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 public class SubCathegoryPage {
 
     private WebDriver driver;
-    private int minPrice;
-    private int maxPrice;
-    private String manufacturer1;
-    private String manufacturer2;
 
-    public SubCathegoryPage(WebDriver driver, int minPrice, int maxPrice) {
+    public SubCathegoryPage(WebDriver driver) {
         this.driver = driver;
-        this.minPrice = minPrice;
-        this.maxPrice = maxPrice;
-        this.manufacturer1 = "Lenovo";
-        this.manufacturer2 = "HP";
-
     }
 
-    private String noteBookName;
+     private String itemName;
 
-    public SubCathegoryPage(String noteBookName) {
-        this.noteBookName = noteBookName;
+    public SubCathegoryPage(String itemName) {
+        this.itemName = itemName;
     }
 
     @Step("Установка фильтра по цене")
@@ -43,7 +32,7 @@ public class SubCathegoryPage {
      * Метод устанавливает фильтры по цене
      * Автор: [Юлия Константинова]
      */
-    public void setPriceFilter() {
+    public void setPriceFilter(int minPrice, int maxPrice) {
         WebElement minPriceInput = driver.findElement(By.xpath("(//div[@data-grabber='SearchFilters']" +
                 "//child::input[contains(@id,'min')])[1]"));
         WebElement maxPriceInput = driver.findElement(By.xpath("(//div[@data-grabber='SearchFilters']" +
@@ -53,32 +42,20 @@ public class SubCathegoryPage {
         maxPriceInput.sendKeys(String.valueOf(maxPrice));
     }
 
-    @Step("Выбор производителя 1")
-    /**
-     * Метод устанавливает производителя 1
-     * Автор: [Юлия Константинова]
-     */
-    public void selectManufacturer1(String manufacturer) {
-        WebElement manufacturerElement = driver.findElement(By.xpath("//span[text()='" + manufacturer + "']"));
-        manufacturerElement.click();
-    }
 
-    @Step("Выбор производителя 2")
-    /**
-     * Метод устанавливает производителя 2
-     * Автор: [Юлия Константинова]
-     */
-    public void selectManufacturer2(String manufacturer) {
-        WebElement manufacturerElement = driver.findElement(By.xpath("//span[text()='" + manufacturer + "']"));
-        manufacturerElement.click();
+    @Step("Выбор производителей '{manufacturers}'")
+    public void selectManufacturers(List<String> manufacturers) {
+        for (String manufacturer : manufacturers) {
+            WebElement manufacturerElement = driver.findElement(By.xpath("//span[text()='" + manufacturer + "']"));
+            manufacturerElement.click();
+        }
     }
-
-    @Step("Проверка на количество элементов в результатах поиска")
+    @Step("Проверка на количество элементов в результатах поиска более '{expectedItemCount}'")
     /**
-     * Метод проверяет, что в списке результатов поиска более 12 товаров 
+     * Метод проверяет количество элементов в результатах поиска
      * Автор: [Юлия Константинова]
      */
-    public void assertMoreThan12ItemsDisplayed() {
+    public void assertNumberOfItemsDisplayed(int expectedItemCount) {
 
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(40));
         List<WebElement> items = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.xpath("//div[@data-test-id='virtuoso-item-list']" +
@@ -86,44 +63,74 @@ public class SubCathegoryPage {
 
         System.out.println(items.size());
 
-        boolean result = items.size() > 12;
-        Assertions.assertTrue(result, "Менее 12 элементов представлены на странице");
+        boolean result = items.size() > expectedItemCount;
+        Assertions.assertTrue(result, "Менее" + expectedItemCount+ "элементов представлены на странице");
     }
 
-    @Step("Проверка на соответствие результатов поиска фильтрам ")
+    @Step("Проверка на соответствие результатов поиска фильтрам '{manufacturers}','{minPrice}', '{maxPrice}' ")
 /**
- * Метод проверяет, что результаты поиска соответствуют фильтрам
+ * Метод проверяет, что результаты поиска соответствуют фильтрам по цене и производителю
  * Автор: [Юлия Константинова]
  */
-    public void testFilterOnAllPages() {
-        List<WebElement> resultSearch = driver.findElements(By.xpath("//div[@data-test-id='virtuoso-item-list']"));
-        boolean allMatch = true;
 
-        for (WebElement element : resultSearch) {
-            String elementText = element.getText();
-            if (elementText.contains(manufacturer1) && elementText.contains(manufacturer2)) {
-                if (!isPriceInRange(element, minPrice, maxPrice)) {
-                    allMatch = false;
-                    break; // Прекратить проверку при первом несоответствии
-                }
+    public boolean verifyProductsMatchingFiltersOnAllPages(int minPrice, int maxPrice, List<String> manufacturers) {
+        boolean allProductsMatchFilters = true; // Изначально предполагаем, что все товары соответствуют фильтрам
+
+        while (goToNextPage()) {
+            List<TestParameters> productsOnCurrentPage = getProductsOnCurrentPage(); // Получить товары на текущей странице
+
+            // Проверить, что все товары на текущей странице соответствуют фильтру по производителю
+            boolean productsByManufacturerMatchFilters = productsOnCurrentPage.stream().allMatch(product ->
+                    manufacturers.contains(product.getManufacturer())
+            );
+
+            // Проверить, что все товары на текущей странице соответствуют фильтру по цене
+            boolean productsByPriceMatchFilters = productsOnCurrentPage.stream().allMatch(product ->
+                    product.getPrice() >= minPrice && product.getPrice() <= maxPrice
+            );
+
+            // Если хотя бы один товар на странице не соответствует фильтру по производителю, устанавливаем флаг в false и выдаем ошибку
+            if (!productsByManufacturerMatchFilters) {
+                allProductsMatchFilters = false;
+                Assertions.fail("На текущей странице найден товар, не соответствующий фильтру по производителям" + manufacturers);
+                break; // Прервать проверку на следующих страницах
             }
+
+            // Если хотя бы один товар на странице не соответствует фильтру по цене, устанавливаем флаг в false и выдаем ошибку
+            if (!productsByPriceMatchFilters) {
+                allProductsMatchFilters = false;
+                Assertions.fail("На текущей странице найден товар, не соответствующий фильтру по цене");
+                break; // Прервать проверку на следующих страницах
+            }
+
+            // Переход на следующую страницу (если есть)
+            goToNextPage();
         }
 
-        Assertions.assertTrue(allMatch, "Товары не соответствуют фильтрам");
+         return true;
     }
     /**
-     * Метод проверяет, что результаты поиска соответствуют фильтру по цене
+     * Метод Получает список товаров на текущей странице и возвращает их в виде списка объектов TestParameters.
+     * Содержит информацию о производителе и цене.
      * Автор: [Юлия Константинова]
      */
-    private boolean isPriceInRange(WebElement element, double minPrice, double maxPrice) {
-        String priceText = element.findElement(By.xpath("//div[@data-baobab-name='price']"))
-                .getText();
-        double price = Double.parseDouble(priceText.replaceAll("[^0-9.]+", ""));
-        return price >= minPrice && price <= maxPrice;
+    private List<TestParameters> getProductsOnCurrentPage() {
+        List<TestParameters> products = new ArrayList<>();
+        List<WebElement> items = driver.findElements(By.xpath("//div[@data-test-id='virtuoso-item-list']//descendant::*[@data-index]"));
+        for (WebElement productElement : items) {
+
+            String productManufacturer = productElement.findElement(By.xpath("//h3[ @data-auto='snippet-title-header']")).getText();
+          String priceText = productElement.findElement(By.xpath("//h3[ @data-auto='price-block']"))
+                    .getText();
+            double price = Double.parseDouble(priceText.replaceAll("[^0-9.]+", ""));
+            TestParameters productInfo = new TestParameters(productManufacturer,price) ;
+            products.add(productInfo);
+        }
+
+        return products;
     }
 
 
-    @Step("Переход на следующую страницу")
     /**
      * Метод переходит на следующую страницу
      * Автор: [Юлия Константинова]
@@ -145,6 +152,7 @@ public class SubCathegoryPage {
     * Автор: [Юлия Константинова]
     */
     public void goToFirstPage() {
+        goToNextPage();
         WebElement firstPageButton = driver.findElement(By.xpath("//div[@data-auto='pagination-page' and text()='1']"));
         firstPageButton.click();
     }
@@ -156,14 +164,15 @@ public class SubCathegoryPage {
      * Автор: [Юлия Константинова] 
      */
     public String getFirstname(WebDriver driver) {
+
         List<WebElement> items = driver.findElements(By.xpath("//div[@data-test-id='virtuoso-item-list']//descendant::*[@data-index]"));
         WebElement firstItem = items.get(1);
-        String noteBookName = firstItem.findElement(By.xpath("//*[@data-auto='snippet-title-header']")).getText();
-        System.out.println("Название ноутбука: " + noteBookName);
+        String itemName = firstItem.findElement(By.xpath("//*[@data-auto='snippet-title-header']")).getText();
+        System.out.println("Название ноутбука: " + itemName);
 
         WebElement searchInput = driver.findElement(By.xpath("//input[@name='text']"));
-        searchInput.sendKeys(noteBookName);
-        return noteBookName;
+        searchInput.sendKeys(itemName);
+        return itemName;
 
     }
 
@@ -178,17 +187,17 @@ public class SubCathegoryPage {
 
     }
 
-    @Step("Проверка наличия искомого товара в результатах поиска")
+    @Step("Проверка наличия искомого товара '{itemName}' в результатах поиска")
     /**
      * Метод проверяет, что в списке результатов поиска присутствует товар, который был взят в методе getFirstname
      * Автор: [Юлия Константинова] 
      */
-    public void verifySearch(WebDriver driver, String notebookName) {
+    public void verifySearch(WebDriver driver, String itemName) {
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(40));
         List<WebElement> items = wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(By.xpath("//div[@data-test-id='virtuoso-item-list']")));
         boolean itemFound = items.stream()
-                .anyMatch(result -> result.getText().contains(notebookName));
+                .anyMatch(result -> result.getText().contains(itemName));
 
-        Assertions.assertTrue(itemFound, "Искомый товар не найден в результатах поиска.");
+        Assertions.assertTrue(itemFound, "Товар" + itemName+ "не найден в результатах поиска.");
     }
 }
